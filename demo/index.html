@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WYSIWYG Editor Demo</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: system-ui, sans-serif;
+      background: #f3f4f6;
+      min-height: 100vh;
+      transition: background 0.2s;
+    }
+    body.dark { background: #111827; color: #f9fafb; }
+    .demo-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .demo-header h1 {
+      margin: 0;
+      font-size: 22px;
+      color: inherit;
+    }
+    .demo-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .demo-btn {
+      padding: 6px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    body.dark .demo-btn {
+      background: #1f2937;
+      border-color: #374151;
+      color: #f9fafb;
+    }
+    .demo-btn:hover { background: #f9fafb; }
+    body.dark .demo-btn:hover { background: #374151; }
+    #editor-container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .output-panel {
+      margin-top: 16px;
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: none;
+    }
+    body.dark .output-panel {
+      background: #1f2937;
+      color: #f9fafb;
+    }
+    .output-panel.active { display: block; }
+  </style>
+</head>
+<body>
+  <div id="editor-container">
+    <div class="demo-header">
+      <h1>WYSIWYG Editor</h1>
+      <div class="demo-controls">
+        <button class="demo-btn" onclick="toggleTheme()">Toggle Dark Mode</button>
+        <button class="demo-btn" onclick="showOutput('html')">Get HTML</button>
+        <button class="demo-btn" onclick="showOutput('markdown')">Get Markdown</button>
+        <button class="demo-btn" onclick="showOutput('json')">Get JSON</button>
+        <button class="demo-btn" onclick="editor.setLocale('de')">DE</button>
+        <button class="demo-btn" onclick="editor.setLocale('en')">EN</button>
+      </div>
+    </div>
+    <div id="editor"></div>
+    <pre class="output-panel" id="output"></pre>
+  </div>
+
+  <script type="module">
+    import { createEditor } from '/src/index.ts';
+
+    const initialHTML = `<h1>Welcome to WYSIWYG Editor</h1>
+<p>A fully custom, modern rich-text editor built with <strong>TypeScript</strong>. No external editor frameworks — built from scratch.</p>
+<h2>Features</h2>
+<ul>
+  <li>Rich text formatting: bold, italic, underline, strikethrough</li>
+  <li>Headings, blockquotes, code blocks</li>
+  <li>Tables with floating toolbar</li>
+  <li>Image upload (Base64 + Server callback)</li>
+  <li>Dark mode support</li>
+  <li>Word count, reading time</li>
+  <li>HTML, Markdown, and JSON export</li>
+</ul>
+<p>Try typing <code>/</code> at the start of a line for the slash command palette!</p>`;
+
+    window.editor = createEditor({
+      container: document.getElementById('editor'),
+      initialHTML,
+      placeholder: 'Start writing...',
+      theme: 'light',
+      floatingToolbar: true,
+      autosave: { enabled: true, interval: 30000, storageKey: 'wysiwyg-demo' },
+      onChange: (html) => {
+        // console.log('changed, length:', html.length);
+      },
+      onError: ({ type, message }) => {
+        console.warn(`Editor error [${type}]:`, message);
+      },
+    });
+
+    window.toggleTheme = function() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      window.editor.setTheme(isDark ? 'dark' : 'light');
+    };
+
+    window.showOutput = function(format) {
+      const output = document.getElementById('output');
+      let content = '';
+      if (format === 'html') content = window.editor.getHTML();
+      else if (format === 'markdown') content = window.editor.getMarkdown();
+      else if (format === 'json') content = JSON.stringify(window.editor.getJSON(), null, 2);
+      output.textContent = content;
+      output.classList.toggle('active', !!content);
+    };
+  </script>
+</body>
+</html>
