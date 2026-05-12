@@ -69,7 +69,7 @@ export function createEditor(options: EditorOptions): Editor {
   });
 
   // Build toolbar after plugins are registered (commands available)
-  new Toolbar(editor);
+  editor.setToolbar(new Toolbar(editor));
 
   return editor;
 }

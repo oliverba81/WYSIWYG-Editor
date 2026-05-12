@@ -6,10 +6,22 @@ const MAX_SIZE = 10 * 1024 * 1024;
 
 export class ImagePlugin extends BasePlugin {
   readonly name = 'Image';
+  private _observer: MutationObserver | null = null;
+  private _selectedImg: HTMLImageElement | null = null;
+  private _controlledImages = new WeakSet<HTMLImageElement>();
+  private _onDocumentClick = (e: MouseEvent): void => {
+    const target = e.target as HTMLElement;
+    if (target.closest('.wysiwyg-img-toolbar') || target === this._selectedImg) return;
+    this._clearImageSelection();
+  };
 
   init(): void {
     this.registerCommand('insertImage', () => this._openModal());
     this.registerCommand('insertImageFile', (args) => this._insertFile(args as File));
+    this._attachImageControls();
+    this._observer = new MutationObserver(() => this._attachImageControls());
+    this._observer.observe(this.editor.editorEl, { childList: true, subtree: true });
+    document.addEventListener('click', this._onDocumentClick);
   }
 
   private _openModal(): void {
@@ -112,17 +124,15 @@ export class ImagePlugin extends BasePlugin {
   }
 
   private _addImageControls(img: HTMLImageElement): void {
+    if (this._controlledImages.has(img)) return;
+    this._controlledImages.add(img);
     img.classList.add('wysiwyg-img');
-    img.addEventListener('click', () => {
-      document.querySelectorAll('.wysiwyg-img-selected').forEach(e => e.classList.remove('wysiwyg-img-selected'));
+    img.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._clearImageSelection();
+      this._selectedImg = img;
       img.classList.add('wysiwyg-img-selected');
       this._showImageToolbar(img);
-    });
-    document.addEventListener('click', (e) => {
-      if (e.target !== img) {
-        img.classList.remove('wysiwyg-img-selected');
-        document.querySelector('.wysiwyg-img-toolbar')?.remove();
-      }
     });
   }
 
@@ -143,17 +153,94 @@ export class ImagePlugin extends BasePlugin {
       btn.title = key;
       btn.addEventListener('mousedown', (e) => {
         e.preventDefault();
-        img.className = `wysiwyg-img wysiwyg-img-${key}`;
-        toolbar.remove();
+        this._setImageAlignment(img, key);
+        this.editor['_history'].snapshot();
+        this._positionImageToolbar(toolbar, img);
       });
       toolbar.appendChild(btn);
     });
 
-    const rect = img.getBoundingClientRect();
+    const sizeSeparator = document.createElement('span');
+    sizeSeparator.className = 'wysiwyg-img-toolbar-separator';
+    toolbar.appendChild(sizeSeparator);
+
+    const sizes = [25, 50, 75, 100];
+    sizes.forEach(size => {
+      const btn = document.createElement('button');
+      btn.textContent = `${size}%`;
+      btn.title = `Bildbreite ${size}%`;
+      btn.className = 'wysiwyg-img-size-btn';
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        this._setImageWidth(img, size);
+        this.editor['_history'].snapshot();
+        this._positionImageToolbar(toolbar, img);
+      });
+      toolbar.appendChild(btn);
+    });
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '10';
+    input.max = '100';
+    input.step = '5';
+    input.value = this._getImageWidthPercent(img);
+    input.title = 'Bildbreite in Prozent';
+    input.className = 'wysiwyg-img-size-input';
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('change', () => {
+      const size = Math.max(10, Math.min(100, Number(input.value) || 100));
+      input.value = String(size);
+      this._setImageWidth(img, size);
+      this.editor['_history'].snapshot();
+      this._positionImageToolbar(toolbar, img);
+    });
+    toolbar.appendChild(input);
+
     toolbar.style.position = 'fixed';
-    toolbar.style.top = `${rect.top + window.scrollY - 36}px`;
-    toolbar.style.left = `${rect.left + window.scrollX}px`;
     document.body.appendChild(toolbar);
+    this._positionImageToolbar(toolbar, img);
+  }
+
+  private _attachImageControls(): void {
+    this.editor.editorEl.querySelectorAll<HTMLImageElement>('img').forEach(img => this._addImageControls(img));
+  }
+
+  private _clearImageSelection(): void {
+    document.querySelectorAll('.wysiwyg-img-selected').forEach(e => e.classList.remove('wysiwyg-img-selected'));
+    document.querySelector('.wysiwyg-img-toolbar')?.remove();
+    this._selectedImg = null;
+  }
+
+  private _setImageAlignment(img: HTMLImageElement, key: string): void {
+    img.classList.remove('wysiwyg-img-left', 'wysiwyg-img-center', 'wysiwyg-img-right', 'wysiwyg-img-full');
+    img.classList.add(`wysiwyg-img-${key}`);
+    if (key === 'full') {
+      img.style.width = '100%';
+    }
+  }
+
+  private _setImageWidth(img: HTMLImageElement, size: number): void {
+    img.classList.remove('wysiwyg-img-full');
+    img.style.width = `${size}%`;
+    img.style.height = 'auto';
+  }
+
+  private _getImageWidthPercent(img: HTMLImageElement): string {
+    const inlineWidth = img.style.width.match(/^(\d+(?:\.\d+)?)%$/);
+    if (inlineWidth) return String(Math.round(Number(inlineWidth[1])));
+
+    const figure = img.closest('.wysiwyg-figure') ?? this.editor.editorEl;
+    const containerWidth = figure.getBoundingClientRect().width || this.editor.editorEl.getBoundingClientRect().width;
+    const width = img.getBoundingClientRect().width;
+    if (!containerWidth || !width) return '100';
+    return String(Math.max(10, Math.min(100, Math.round((width / containerWidth) * 100))));
+  }
+
+  private _positionImageToolbar(toolbar: HTMLElement, img: HTMLImageElement): void {
+    const rect = img.getBoundingClientRect();
+    toolbar.style.top = `${Math.max(8, rect.top - 38)}px`;
+    toolbar.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - toolbar.offsetWidth - 8))}px`;
   }
 
   private _input(type: string, placeholder: string): HTMLInputElement {
@@ -174,5 +261,9 @@ export class ImagePlugin extends BasePlugin {
     return row;
   }
 
-  destroy(): void {}
+  destroy(): void {
+    this._observer?.disconnect();
+    document.removeEventListener('click', this._onDocumentClick);
+    this._clearImageSelection();
+  }
 }

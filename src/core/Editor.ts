@@ -8,6 +8,7 @@ import { isEmptyEditor, normalizeContent, normalizeColorSpans } from './DOMUtils
 import { debounce } from './utils';
 import { setLocale, t } from './i18n';
 import type { BasePlugin } from '../plugins/BasePlugin';
+import type { Toolbar } from '../toolbar/Toolbar';
 import { getMarkdown, importMarkdown } from '../export/markdownExporter';
 import { getJSON, importJSON } from '../export/jsonExporter';
 
@@ -22,6 +23,7 @@ export class Editor extends EventEmitter<EventMap> {
   private _statusBar!: HTMLElement;
 
   selection!: SelectionManager;
+  private _toolbar: Toolbar | null = null;
   private _history!: History;
   private _sanitizer: Sanitizer;
   private _plugins = new Map<string, BasePlugin>();
@@ -32,12 +34,9 @@ export class Editor extends EventEmitter<EventMap> {
   private _isSourceMode = false;
   private _isFullscreen = false;
   private _sourceTextarea!: HTMLTextAreaElement;
+  private _destroyed = false;
 
-  private _debouncedChange = debounce((...args: unknown[]) => {
-    const html = args[0] as string;
-    this.emit('change', html);
-    this.options.onChange?.(html);
-  }, 300);
+  private readonly _debouncedChange: ReturnType<typeof debounce<(...args: unknown[]) => void>> | null;
 
   constructor(options: EditorOptions) {
     super();
@@ -45,13 +44,37 @@ export class Editor extends EventEmitter<EventMap> {
     this.options = options;
     this.commands = new CommandRegistry();
     this._sanitizer = new Sanitizer();
-    if (options.locale) setLocale(options.locale);
+    const debounceMs = options.onChangeDebounceMs ?? 300;
+    this._debouncedChange = debounceMs > 0
+      ? debounce((...args: unknown[]) => {
+        const html = args[0] as string;
+        this._emitChange(html);
+      }, debounceMs)
+      : null;
+    setLocale(options.locale ?? 'de');
     this._build();
     this._initHistory();
     this._initSelection();
     this._bindEvents();
     this._loadPlugins();
     this._applyInitialState();
+  }
+
+  private _emitChange(html: string): void {
+    if (this._destroyed) return;
+    this.emit('change', html);
+    this.options.onChange?.(html);
+  }
+
+  /** Schedule or run `onChange` for the current editor HTML (respects `onChangeDebounceMs`). */
+  private _scheduleContentChange(): void {
+    if (this._destroyed) return;
+    const html = this.getHTML();
+    if (this._debouncedChange) {
+      this._debouncedChange(html);
+    } else {
+      this._emitChange(html);
+    }
   }
 
   private _build(): void {
@@ -135,12 +158,13 @@ export class Editor extends EventEmitter<EventMap> {
       this._isComposing = false;
       this._history.debouncedSnapshot();
       this._updateWordCount();
+      this._scheduleContentChange();
     });
 
     this.editorEl.addEventListener('input', () => {
       if (this._isComposing) return;
       this._updatePlaceholder();
-      this._debouncedChange(this.getHTML());
+      this._scheduleContentChange();
       this._updateWordCount();
     });
 
@@ -164,6 +188,8 @@ export class Editor extends EventEmitter<EventMap> {
     });
     this.wrapperEl.addEventListener('focusout', (e) => {
       if (!this.wrapperEl.contains(e.relatedTarget as Node)) {
+        this._debouncedChange?.cancel();
+        this._emitChange(this.getHTML());
         this._history.snapshot();
         this.emit('blur');
         this.options.onBlur?.();
@@ -205,12 +231,6 @@ export class Editor extends EventEmitter<EventMap> {
     if (e.ctrlKey && e.key === 'a' && document.activeElement === this.editorEl) {
       e.preventDefault();
       this.selection.selectAll();
-      return;
-    }
-
-    if (e.key === 'Enter' && e.shiftKey && document.activeElement === this.editorEl) {
-      e.preventDefault();
-      document.execCommand('insertHTML', false, '<br>');
       return;
     }
 
@@ -318,8 +338,14 @@ export class Editor extends EventEmitter<EventMap> {
     if (this.options.autofocus) setTimeout(() => this.focus(), 0);
     if (this.options.autosave?.enabled) this._startAutosave();
     this._history.snapshot();
-    setTimeout(() => this.emit('ready'), 0);
-    this.options.onReady?.();
+    queueMicrotask(() => {
+      if (this._destroyed) return;
+      this.options.onReady?.();
+    });
+    setTimeout(() => {
+      if (this._destroyed) return;
+      this.emit('ready');
+    }, 0);
   }
 
   _updatePlaceholder(): void {
@@ -512,6 +538,16 @@ export class Editor extends EventEmitter<EventMap> {
 
   setLocale(locale: 'en' | 'de' | Record<string, string>): void {
     setLocale(locale);
+    if (!this.options.placeholder) {
+      this.editorEl.setAttribute('data-placeholder', t('placeholder'));
+      this.editorEl.setAttribute('aria-label', t('placeholder'));
+    }
+    this._toolbar?.refreshLocale();
+    if (this._isReadonly) this.setReadonly(true);
+  }
+
+  setToolbar(toolbar: Toolbar): void {
+    this._toolbar = toolbar;
   }
 
   normalizeColorSpans(): void {
@@ -523,6 +559,9 @@ export class Editor extends EventEmitter<EventMap> {
   }
 
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    this._debouncedChange?.cancel();
     this.emit('destroy');
     if (this._autosaveTimer) clearInterval(this._autosaveTimer);
     this._history.destroy();

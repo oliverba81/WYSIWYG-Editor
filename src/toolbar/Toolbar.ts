@@ -16,6 +16,12 @@ export class Toolbar {
     this._subscribeToState();
   }
 
+  refreshLocale(): void {
+    this._buttons.clear();
+    this._editor.toolbarEl.innerHTML = '';
+    this._build();
+  }
+
   private _build(): void {
     const groups = (this._editor.options.toolbar !== false && this._editor.options.toolbar)
       ? this._editor.options.toolbar
@@ -73,7 +79,7 @@ export class Toolbar {
         svg.setAttribute('focusable', 'false');
       }
     } else {
-      btn.textContent = item.label ?? item.command ?? '';
+      btn.textContent = t(item.label ?? item.command ?? '');
     }
 
     btn.addEventListener('mousedown', (e) => e.preventDefault());
@@ -106,7 +112,7 @@ export class Toolbar {
     item.options?.forEach(opt => {
       const option = document.createElement('option');
       option.value = opt.value;
-      option.textContent = opt.label;
+      option.textContent = this._translateOption(item, opt);
       select.appendChild(option);
     });
 
@@ -131,6 +137,24 @@ export class Toolbar {
 
     wrapper.appendChild(select);
     return wrapper;
+  }
+
+  private _translateOption(item: ToolbarItemConfig, opt: { value: string; label: string }): string {
+    if (item.command !== 'setBlockType') return opt.label;
+
+    const labelKeys: Record<string, string> = {
+      format_p: 'paragraph',
+      format_h1: 'heading1',
+      format_h2: 'heading2',
+      format_h3: 'heading3',
+      format_h4: 'heading4',
+      format_h5: 'heading5',
+      format_h6: 'heading6',
+      format_blockquote: 'blockquote',
+      format_pre: 'codeBlock',
+    };
+
+    return t(labelKeys[opt.value] ?? opt.label);
   }
 
   private _subscribeToState(): void {

@@ -53,6 +53,7 @@
 .wysiwyg-img-toolbar {
   position: fixed;
   display: flex;
+  align-items: center;
   background: #1f2937;
   border-radius: 6px;
   padding: 4px;
@@ -62,7 +63,7 @@
 }
 
 .wysiwyg-img-toolbar button {
-  width: 28px;
+  min-width: 28px;
   height: 26px;
   border: none;
   background: none;
@@ -74,6 +75,31 @@
 
 .wysiwyg-img-toolbar button:hover {
   background: rgba(255,255,255,0.15);
+}
+
+.wysiwyg-img-toolbar .wysiwyg-img-size-btn {
+  width: auto;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.wysiwyg-img-toolbar-separator {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: rgba(255,255,255,0.25);
+}
+
+.wysiwyg-img-size-input {
+  width: 52px;
+  height: 26px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px;
+  background: #111827;
+  color: #f9fafb;
+  font-size: 12px;
 }
 
 .wysiwyg-editor-area .wysiwyg-video-wrapper {

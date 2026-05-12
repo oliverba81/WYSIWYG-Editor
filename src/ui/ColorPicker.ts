@@ -25,9 +25,9 @@ export class ColorPicker {
     this._hexInput.type = 'text';
     this._hexInput.className = 'wysiwyg-input wysiwyg-hex-input';
     this._hexInput.placeholder = '#000000';
-    this._hexInput.value = initialColor;
+    this._hexInput.value = this._normalizeColor(initialColor) ?? '#000000';
 
-    this._parseColor(initialColor);
+    this._parseColor(this._hexInput.value);
     this._drawHue();
     this._drawGradient();
     this._updatePreview();
@@ -35,7 +35,11 @@ export class ColorPicker {
     this._canvas.addEventListener('click', (e) => this._onCanvasClick(e));
     this._hueCanvas.addEventListener('click', (e) => this._onHueClick(e));
     this._hexInput.addEventListener('change', () => {
-      this._parseColor(this._hexInput.value);
+      const normalized = this._normalizeColor(this._hexInput.value);
+      if (normalized) {
+        this._hexInput.value = normalized;
+        this._parseColor(normalized);
+      }
       this._drawGradient();
       this._updatePreview();
     });
@@ -87,8 +91,9 @@ export class ColorPicker {
   }
 
   private _parseColor(hex: string): void {
-    const clean = hex.replace('#', '');
-    if (clean.length < 6) return;
+    const normalized = this._normalizeColor(hex);
+    if (!normalized) return;
+    const clean = normalized.slice(1);
     const r = parseInt(clean.slice(0, 2), 16) / 255;
     const g = parseInt(clean.slice(2, 4), 16) / 255;
     const b = parseInt(clean.slice(4, 6), 16) / 255;
@@ -133,7 +138,7 @@ export class ColorPicker {
     this._val = 1 - (e.clientY - rect.top) / rect.height;
     this._sat = Math.max(0, Math.min(1, this._sat));
     this._val = Math.max(0, Math.min(1, this._val));
-    this._hexInput.value = this.getValue();
+    this._hexInput.value = this._getHsvValue();
     this._updatePreview();
   }
 
@@ -142,7 +147,7 @@ export class ColorPicker {
     this._hue = (e.clientX - rect.left) / rect.width;
     this._hue = Math.max(0, Math.min(1, this._hue));
     this._drawGradient();
-    this._hexInput.value = this.getValue();
+    this._hexInput.value = this._getHsvValue();
     this._updatePreview();
   }
 
@@ -150,7 +155,7 @@ export class ColorPicker {
     this._preview.style.backgroundColor = this.getValue();
   }
 
-  getValue(): string {
+  private _getHsvValue(): string {
     const h = this._hue * 360;
     const s = this._sat;
     const v = this._val;
@@ -165,10 +170,33 @@ export class ColorPicker {
     else if (i === 4) { r = t; g = p; b = v; }
     else { r = v; g = p; b = q; }
     const hex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0');
-    const val = `#${hex(r)}${hex(g)}${hex(b)}`;
-    if (this._hexInput && this._hexInput.value.startsWith('#')) {
-      return this._hexInput.value;
+    return `#${hex(r)}${hex(g)}${hex(b)}`;
+  }
+
+  getValue(): string {
+    const normalized = this._normalizeColor(this._hexInput.value);
+    if (normalized) return normalized;
+    return this._getHsvValue();
+  }
+
+  private _normalizeColor(value: string): string | null {
+    const trimmed = value.trim();
+    const hexMatch = trimmed.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+    if (hexMatch) {
+      const hex = hexMatch[1];
+      if (hex.length === 3) {
+        return `#${hex.split('').map(char => char + char).join('')}`.toLowerCase();
+      }
+      return `#${hex}`.toLowerCase();
     }
-    return val;
+
+    const rgbMatch = trimmed.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/);
+    if (!rgbMatch) return null;
+
+    const toHex = (channel: string) => {
+      const value = Math.max(0, Math.min(255, Number(channel)));
+      return value.toString(16).padStart(2, '0');
+    };
+    return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`;
   }
 }

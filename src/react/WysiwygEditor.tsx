@@ -1,86 +1,224 @@
 'use client';
 
-import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import type { EditorOptions } from '../core/types';
+import React, {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  forwardRef,
+} from 'react';
+import type { Editor } from '../core/Editor';
+import type { EditorOptions, SelectionState } from '../core/types';
 
-if (typeof window !== 'undefined') {
-  // Only load Editor and styles in browser context
-}
-
-export interface WysiwygEditorProps extends Omit<EditorOptions, 'container'> {
+export interface WysiwygEditorProps extends Omit<EditorOptions, 'container' | 'onReady'> {
   value?: string;
   defaultValue?: string;
+  disabled?: boolean;
+  focusOnMount?: boolean;
+  focusTrigger?: boolean;
+  onReady?: () => void;
   className?: string;
   style?: React.CSSProperties;
 }
 
-export const WysiwygEditor = forwardRef<unknown, WysiwygEditorProps>(
-  function WysiwygEditor(props, ref) {
-    if (typeof window === 'undefined') return null;
+export interface WysiwygEditorHandle {
+  getEditor: () => Editor | null;
+  focus: () => void;
+  blur: () => void;
+  setReadonly: (readonly: boolean) => void;
+  getHTML: () => string;
+  destroy: () => void;
+}
 
+export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>(
+  function WysiwygEditor(props, ref) {
     return <WysiwygEditorInner {...props} forwardedRef={ref} />;
   }
 );
 
 WysiwygEditor.displayName = 'WysiwygEditor';
 
-function WysiwygEditorInner({
-  value,
-  defaultValue,
-  className,
-  style,
-  forwardedRef,
-  ...options
-}: WysiwygEditorProps & { forwardedRef: React.ForwardedRef<unknown> }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<unknown>(null);
-  const prevValueRef = useRef<string | undefined>(undefined);
+type InnerProps = WysiwygEditorProps & { forwardedRef: React.ForwardedRef<WysiwygEditorHandle> };
 
-  useImperativeHandle(forwardedRef, () => editorRef.current, []);
+function WysiwygEditorInner(props: InnerProps) {
+  const {
+    value,
+    defaultValue,
+    disabled,
+    focusOnMount,
+    focusTrigger = false,
+    className,
+    style,
+    onReady,
+    forwardedRef,
+    ...editorRest
+  } = props;
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<Editor | null>(null);
+  const prevValueRef = useRef<string | undefined>(undefined);
+  const prevFocusTriggerRef = useRef<boolean | undefined>(undefined);
+  const [editorReady, setEditorReady] = useState(false);
+
+  const onChangeRef = useRef(editorRest.onChange);
+  const onBlurRef = useRef(editorRest.onBlur);
+  const onFocusRef = useRef(editorRest.onFocus);
+  const onSelectionChangeRef = useRef(editorRest.onSelectionChange);
+  const onErrorRef = useRef(editorRest.onError);
+
+  useLayoutEffect(() => {
+    onChangeRef.current = editorRest.onChange;
+    onBlurRef.current = editorRest.onBlur;
+    onFocusRef.current = editorRest.onFocus;
+    onSelectionChangeRef.current = editorRest.onSelectionChange;
+    onErrorRef.current = editorRest.onError;
+  });
+
+  const stableOnChange = useCallback((html: string) => {
+    onChangeRef.current?.(html);
+  }, []);
+
+  const stableOnBlur = useCallback(() => {
+    onBlurRef.current?.();
+  }, []);
+
+  const stableOnFocus = useCallback(() => {
+    onFocusRef.current?.();
+  }, []);
+
+  const stableOnSelectionChange = useCallback((state: SelectionState) => {
+    onSelectionChangeRef.current?.(state);
+  }, []);
+
+  const stableOnError = useCallback((err: { type: 'imageUpload' | 'general'; message: string }) => {
+    onErrorRef.current?.(err);
+  }, []);
+
+  useImperativeHandle(
+    forwardedRef,
+    () => ({
+      getEditor: () => editorRef.current,
+      focus: () => {
+        editorRef.current?.focus();
+      },
+      blur: () => {
+        editorRef.current?.blur();
+      },
+      setReadonly: (readonly: boolean) => {
+        editorRef.current?.setReadonly(readonly);
+      },
+      getHTML: () => editorRef.current?.getHTML() ?? '',
+      destroy: () => {
+        const ed = editorRef.current;
+        if (ed) {
+          ed.destroy();
+          editorRef.current = null;
+          setEditorReady(false);
+        }
+      },
+    }),
+    [editorReady]
+  );
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const el = containerRef.current;
+    if (!el) return;
 
-    let EditorClass: (new (opts: EditorOptions) => unknown) | null = null;
+    let cancelled = false;
 
-    const init = async () => {
-      const mod = await import('../index');
-      EditorClass = mod.Editor as unknown as new (opts: EditorOptions) => unknown;
+    const run = async () => {
+      try {
+        const mod = await import('../index');
+        if (cancelled || !containerRef.current) return;
 
-      const initialHTML = defaultValue ?? value ?? '';
-      const editor = new EditorClass({
-        ...options,
-        container: containerRef.current!,
-        initialHTML,
-      });
-      editorRef.current = editor;
-      prevValueRef.current = initialHTML;
+        const EditorClass = mod.Editor as typeof Editor;
+        const initialHTML = value !== undefined ? (value ?? '') : (defaultValue ?? '');
+
+        const editorOptions: EditorOptions = {
+          ...editorRest,
+          container: containerRef.current,
+          initialHTML,
+          locale: editorRest.locale ?? 'de',
+          autofocus: focusOnMount ?? editorRest.autofocus ?? false,
+          readonly: Boolean(editorRest.readonly) || Boolean(disabled),
+          onChange: stableOnChange,
+          onBlur: stableOnBlur,
+          onFocus: stableOnFocus,
+          onSelectionChange: stableOnSelectionChange,
+          onError: editorRest.onError ? stableOnError : undefined,
+        };
+
+        const editor = new EditorClass(editorOptions);
+        if (cancelled) {
+          editor.destroy();
+          return;
+        }
+
+        editorRef.current = editor;
+        prevValueRef.current = initialHTML;
+        setEditorReady(true);
+
+        queueMicrotask(() => {
+          if (!cancelled && onReady) {
+            onReady();
+          }
+        });
+      } catch (err) {
+        console.error('[WysiwygEditor] init failed', err);
+        setEditorReady(false);
+      }
     };
 
-    init();
+    void run();
 
     return () => {
-      const e = editorRef.current as { destroy?: () => void } | null;
-      e?.destroy?.();
-      editorRef.current = null;
+      cancelled = true;
+      setEditorReady(false);
+      const ed = editorRef.current;
+      if (ed) {
+        ed.destroy();
+        editorRef.current = null;
+      }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Intentionally mount-only: EditorOptions snapshot at first render (see plan).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!editorRef.current || value === undefined) return;
-    const editor = editorRef.current as { getHTML: () => string; setHTML: (h: string) => void };
-    if (value !== prevValueRef.current && value !== editor.getHTML()) {
+    if (!editorReady || !editorRef.current) return;
+    if (value === undefined) return;
+    const ed = editorRef.current;
+    if (value !== prevValueRef.current && value !== ed.getHTML()) {
       prevValueRef.current = value;
-      editor.setHTML(value);
+      ed.setHTML(value);
     }
-  }, [value]);
+  }, [value, editorReady]);
 
-  return (
-    <div
-      ref={containerRef}
-      className={className}
-      style={style}
-    />
-  );
+  useEffect(() => {
+    if (!editorReady || !editorRef.current) return;
+    editorRef.current.setReadonly(Boolean(editorRest.readonly || disabled));
+  }, [editorReady, editorRest.readonly, disabled]);
+
+  useEffect(() => {
+    if (!editorReady || !editorRef.current) return;
+    const ed = editorRef.current;
+    const t = editorRest.theme;
+    if (t === 'light' || t === 'dark') {
+      ed.setTheme(t);
+    }
+  }, [editorReady, editorRest.theme]);
+
+  useEffect(() => {
+    if (!editorReady || !editorRef.current) return;
+    const ed = editorRef.current;
+    const prev = prevFocusTriggerRef.current;
+    if (focusTrigger && (prev === false || prev === undefined)) {
+      ed.focus();
+    }
+    prevFocusTriggerRef.current = focusTrigger;
+  }, [focusTrigger, editorReady]);
+
+  return <div ref={containerRef} className={className} style={style} />;
 }

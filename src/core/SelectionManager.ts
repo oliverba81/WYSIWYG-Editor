@@ -73,15 +73,15 @@ export class SelectionManager {
     const isInlineCode = !!codeEl && !preEl;
 
     let alignment: SelectionState['alignment'] = '';
-    try {
-      const align = document.queryCommandValue('justifyLeft') === 'true' ? 'left'
-        : document.queryCommandValue('justifyCenter') === 'true' ? 'center'
-        : document.queryCommandValue('justifyRight') === 'true' ? 'right'
-        : document.queryCommandValue('justifyFull') === 'true' ? 'justify'
-        : '';
-      alignment = align as SelectionState['alignment'];
-    } catch {
-      // ignore
+    const anchorEl = anchorNode?.nodeType === Node.ELEMENT_NODE
+      ? anchorNode as HTMLElement
+      : anchorNode?.parentElement;
+    const alignedBlock = anchorEl?.closest<HTMLElement>('p,h1,h2,h3,h4,h5,h6,blockquote,li,td,th,figcaption,div');
+    if (alignedBlock && alignedBlock !== this._editorEl && this._editorEl.contains(alignedBlock)) {
+      const textAlign = window.getComputedStyle(alignedBlock).textAlign;
+      if (textAlign === 'left' || textAlign === 'center' || textAlign === 'right' || textAlign === 'justify') {
+        alignment = textAlign;
+      }
     }
 
     let fontFamily = '';

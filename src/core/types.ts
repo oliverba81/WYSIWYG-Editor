@@ -82,6 +82,8 @@ export interface EditorOptions {
   sanitize?: boolean;
   allowDataUrls?: boolean;
   historyLimit?: number;
+  /** Milliseconds before `onChange` fires after edits. `0` = synchronous (no timer). Default 300. */
+  onChangeDebounceMs?: number;
 }
 
 export interface ToolbarItemConfig {

@@ -1,32 +1,39 @@
-import React, { useState, useRef } from 'react';
-import { WysiwygEditor } from '../../src/react/WysiwygEditor';
-import { createEditor } from '../../src/core/EditorFactory';
+import { useState, useRef } from 'react';
+import {
+  WysiwygEditor,
+  type WysiwygEditorHandle,
+} from '../../src/react/WysiwygEditor';
 
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [html, setHtml] = useState('<p>Hello from React!</p>');
   const [output, setOutput] = useState('');
-  const editorRef = useRef<ReturnType<typeof createEditor> | null>(null);
+  const [disabled, setDisabled] = useState(false);
+  const [tabActive, setTabActive] = useState(true);
+  const editorRef = useRef<WysiwygEditorHandle>(null);
 
   return (
     <div style={{ padding: 20, fontFamily: 'system-ui, sans-serif', background: theme === 'dark' ? '#111827' : '#f3f4f6', minHeight: '100vh' }}>
       <h1 style={{ color: theme === 'dark' ? '#f9fafb' : '#111827', marginTop: 0 }}>WYSIWYG Editor — React Demo</h1>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}>Toggle Dark</button>
-        <button onClick={() => { const e = editorRef.current; if (e) setOutput(e.getHTML()); }}>Get HTML</button>
-        <button onClick={() => { const e = editorRef.current; if (e) setOutput(e.getMarkdown()); }}>Get Markdown</button>
-        <button onClick={() => { const e = editorRef.current; if (e) setOutput(JSON.stringify(e.getJSON(), null, 2)); }}>Get JSON</button>
-        <button onClick={() => setHtml('<h1>Updated via controlled value</h1><p>This was set programmatically.</p>')}>
+        <button type="button" onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}>Toggle Dark</button>
+        <button type="button" onClick={() => { const h = editorRef.current?.getHTML(); if (h !== undefined) setOutput(h); }}>Get HTML</button>
+        <button type="button" onClick={() => setHtml('<h1>Updated via controlled value</h1><p>This was set programmatically.</p>')}>
           Set Value
         </button>
+        <button type="button" onClick={() => setDisabled(d => !d)}>{disabled ? 'Enable editor' : 'Disable editor'}</button>
+        <button type="button" onClick={() => setTabActive(a => !a)}>{tabActive ? 'Simulate tab inactive' : 'Simulate tab active'}</button>
       </div>
       <WysiwygEditor
-        ref={editorRef as React.Ref<unknown>}
+        ref={editorRef}
         value={html}
         onChange={(newHtml) => setHtml(newHtml)}
         theme={theme}
         placeholder="Start writing..."
         style={{ maxWidth: 900 }}
+        disabled={disabled}
+        focusTrigger={tabActive}
+        onChangeDebounceMs={300}
       />
       {output && (
         <pre style={{

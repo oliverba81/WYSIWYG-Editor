@@ -40,8 +40,8 @@ export class ColorPlugin extends BasePlugin {
       onConfirm: () => {
         const color = picker.getValue();
         addRecentColor(color);
-        this.editor.selection.restoreRange();
         this.editor.focus();
+        this.editor.selection.restoreRange();
         if (mode === 'text') {
           document.execCommand('foreColor', false, color);
           this.editor.normalizeColorSpans();

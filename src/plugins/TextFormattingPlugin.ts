@@ -40,13 +40,22 @@ export class TextFormattingPlugin extends BasePlugin {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return;
     const range = sel.getRangeAt(0);
-    const existingCode = getAncestorWithTag(range.commonAncestorContainer, 'CODE');
-    if (existingCode && existingCode.closest('pre') === null) {
-      const parent = existingCode.parentNode!;
-      while (existingCode.firstChild) parent.insertBefore(existingCode.firstChild, existingCode);
-      parent.removeChild(existingCode);
+
+    const existingCode = this._getInlineCodeAncestor(sel.anchorNode)
+      ?? this._getInlineCodeAncestor(sel.focusNode)
+      ?? this._getInlineCodeAncestor(range.commonAncestorContainer);
+    if (existingCode) {
+      this._unwrapElement(existingCode);
       return;
     }
+
+    const selectedCode = Array.from(this.editor.editorEl.querySelectorAll('code'))
+      .find(code => code.closest('pre') === null && range.intersectsNode(code));
+    if (selectedCode) {
+      this._unwrapElement(selectedCode);
+      return;
+    }
+
     const code = document.createElement('code');
     try {
       range.surroundContents(code);
@@ -54,6 +63,19 @@ export class TextFormattingPlugin extends BasePlugin {
       code.appendChild(range.extractContents());
       range.insertNode(code);
     }
+  }
+
+  private _getInlineCodeAncestor(node: Node | null): HTMLElement | null {
+    const code = getAncestorWithTag(node, 'CODE');
+    if (!code || code.closest('pre')) return null;
+    return code;
+  }
+
+  private _unwrapElement(el: HTMLElement): void {
+    const parent = el.parentNode;
+    if (!parent) return;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
   }
 
   destroy(): void {

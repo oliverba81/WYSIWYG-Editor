@@ -31,7 +31,7 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
 
 const ALLOWED_STYLE_PROPS = new Set([
   'color', 'background-color', 'font-size', 'font-family',
-  'font-weight', 'font-style', 'text-decoration', 'text-align',
+  'font-weight', 'font-style', 'text-decoration', 'text-align', 'text-align-last',
   'width', 'float', 'margin', 'margin-left', 'margin-right',
   'margin-top', 'margin-bottom', 'padding',
 ]);
