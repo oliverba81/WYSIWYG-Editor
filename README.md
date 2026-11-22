@@ -71,6 +71,14 @@ With default **`sanitize: true`**, paste uses the internal sanitizer. **`onImage
 8. Uncontrolled mode: only `defaultValue`, no continuous overwrites from React.
 9. Unmount with pending debounce: no `onChange` after `destroy`.
 
+## Demos
+
+| Datei | Nutzung |
+|-------|---------|
+| `demo/index.html` | Vite-Dev-Demo (`npm run dev`) |
+| `demo/standalone.html` | Eigenständige HTML-Datei mit eingebettetem UMD-Bundle — im Browser öffnen, ohne Server |
+| `demo/react-demo/` | React-Wrapper-Demo (`npm run dev:react`) |
+
 ## Core (`Editor`)
 
 See `src/core/Editor.ts` for the full API (`setHTML`, `getHTML`, `setReadonly`, `focus`, `destroy`, …).
